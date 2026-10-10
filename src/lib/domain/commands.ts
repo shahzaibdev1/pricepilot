@@ -90,7 +90,9 @@ export function executeCommand(workspace: Workspace, input: unknown): Workspace 
     const supplier = next.suppliers.find((s) => s.id === command.supplierId);
     if (!supplier) throw new Error('Supplier not found');
     if (next.batches.length >= 50)
-      throw new Error('This release supports 50 saved updates per workspace');
+      throw new Error(
+        'Your 50 saved update slots are full. Export reports and remove old updates in History to make room.',
+      );
     const rows = reviewRows(
       command.rows,
       command.mapping,
@@ -113,6 +115,9 @@ export function executeCommand(workspace: Workspace, input: unknown): Workspace 
     if (batch.rows.some((r) => selected.has(r.id) && r.status === 'blocked'))
       throw new Error('Blocked rows cannot be approved');
     batch.rows.forEach((r) => (r.approved = selected.has(r.id)));
+  } else if (command.type === 'batch.delete') {
+    if (!next.batches.some((b) => b.id === command.batchId)) throw new Error('Update not found');
+    next.batches = next.batches.filter((b) => b.id !== command.batchId);
   } else if (command.type === 'batch.apply') return applyBatch(next, command.batchId);
   return workspaceSchema.parse(next);
 }

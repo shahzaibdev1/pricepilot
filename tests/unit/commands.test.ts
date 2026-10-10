@@ -104,3 +104,38 @@ it('rejects unknown commands and excessively long inputs', () => {
     }),
   ).toThrow();
 });
+it('removes a saved update to free capacity without changing catalogue prices', () => {
+  let data = executeCommand(ws(), {
+    type: 'batch.create',
+    supplierId: 's',
+    fileName: 'prices.csv',
+    mapping: { sku: 'sku', name: 'name', cost: 'cost' },
+    separator: '.',
+    rows: [{ sku: 'A', name: 'Part', cost: '10' }],
+  });
+  const original = data.batches[0];
+  data = executeCommand(data, {
+    type: 'batch.approve',
+    batchId: original.id,
+    rowIds: [original.rows[0].id],
+  });
+  data = executeCommand(data, { type: 'batch.apply', batchId: original.id });
+  data.batches = Array.from({ length: 50 }, (_, i) => ({ ...data.batches[0], id: 'batch-' + i }));
+  const next = executeCommand(data, { type: 'batch.delete', batchId: 'batch-0' });
+  expect(next.batches).toHaveLength(49);
+  expect(next.products).toEqual(data.products);
+  expect(next.catalogVersion).toBe(data.catalogVersion);
+  expect(data.batches).toHaveLength(50);
+  const continued = executeCommand(next, {
+    type: 'batch.create',
+    supplierId: 's',
+    fileName: 'next.csv',
+    mapping: { sku: 'sku', name: 'name', cost: 'cost' },
+    separator: '.',
+    rows: [{ sku: 'A', name: 'Part', cost: '11' }],
+  });
+  expect(continued.batches).toHaveLength(50);
+  expect(() => executeCommand(next, { type: 'batch.delete', batchId: 'missing' })).toThrow(
+    /not found/i,
+  );
+});

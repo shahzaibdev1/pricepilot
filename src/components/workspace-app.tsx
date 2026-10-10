@@ -16,6 +16,7 @@ import {
   ShieldCheck,
   Clock3,
   RefreshCw,
+  Trash2,
 } from 'lucide-react';
 import type { Workspace, Batch } from '@/lib/domain/types';
 import { workspaceSchema, type Command } from '@/lib/domain/schema';
@@ -47,7 +48,17 @@ function loadLocal(initial: Workspace, version: number) {
     };
   }
 }
-function UpdateTable({ batches, onOpen }: { batches: Batch[]; onOpen: (id: string) => void }) {
+function UpdateTable({
+  batches,
+  onOpen,
+  onDelete,
+  busy = false,
+}: {
+  batches: Batch[];
+  onOpen: (id: string) => void;
+  onDelete?: (batch: Batch) => void;
+  busy?: boolean;
+}) {
   return (
     <div className="table-scroll">
       <table>
@@ -58,7 +69,7 @@ function UpdateTable({ batches, onOpen }: { batches: Batch[]; onOpen: (id: strin
             <th scope="col">Products</th>
             <th scope="col">Status</th>
             <th scope="col">
-              <span className="sr-only">Open update</span>
+              <span className="sr-only">Update actions</span>
             </th>
           </tr>
         </thead>
@@ -81,10 +92,21 @@ function UpdateTable({ batches, onOpen }: { batches: Batch[]; onOpen: (id: strin
                 <button
                   className="icon-button"
                   aria-label={`Open ${b.fileName}`}
+                  disabled={busy}
                   onClick={() => onOpen(b.id)}
                 >
                   <ArrowUpRight size={18} />
                 </button>
+                {onDelete && (
+                  <button
+                    className="icon-button"
+                    aria-label={`Remove ${b.fileName}`}
+                    disabled={busy}
+                    onClick={() => onDelete(b)}
+                  >
+                    <Trash2 size={17} />
+                  </button>
+                )}
               </td>
             </tr>
           ))}
@@ -472,7 +494,10 @@ export default function WorkspaceApp({
                 <div>
                   <span className="eyebrow">EVERY CHANGE HAS A RECORD</span>
                   <h1>History</h1>
-                  <p>Reopen reviews and download reports from previous updates.</p>
+                  <p>
+                    Reopen reviews and download reports. {workspace.batches.length} of 50 saved
+                    slots used.
+                  </p>
                 </div>
                 <button className="button primary" disabled={busy} onClick={() => newUpdate()}>
                   <Plus size={17} />
@@ -481,7 +506,20 @@ export default function WorkspaceApp({
               </div>
               <section className="panel">
                 {workspace.batches.length ? (
-                  <UpdateTable batches={workspace.batches} onOpen={openBatch} />
+                  <UpdateTable
+                    batches={workspace.batches}
+                    onOpen={openBatch}
+                    busy={busy}
+                    onDelete={(batch) => {
+                      if (
+                        confirm(
+                          `Remove ${batch.fileName} and its saved review/report? Download reports first. Catalogue products and prices will stay unchanged.`,
+                        )
+                      ) {
+                        void run({ type: 'batch.delete', batchId: batch.id });
+                      }
+                    }}
+                  />
                 ) : (
                   <Empty
                     title="No updates yet"

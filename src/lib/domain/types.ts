@@ -19,6 +19,7 @@ export type Product = {
 };
 export type ParsedFile = {
   sheets: { name: string; headers: string[]; rows: Record<string, string>[] }[];
+  warnings?: string[];
 };
 export type ReviewRow = {
   id: string;

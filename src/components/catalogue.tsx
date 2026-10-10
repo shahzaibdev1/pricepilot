@@ -24,6 +24,7 @@ export default function Catalogue({
       (!supplier || p.supplierId === supplier) &&
       (!query || `${p.sku} ${p.name}`.toLowerCase().includes(query.toLowerCase())),
   );
+  const currentPage = Math.min(page, Math.max(0, Math.ceil(products.length / 25) - 1));
   function download() {
     const rows: ReviewRow[] = products.map((p) => ({
       id: p.id,
@@ -115,7 +116,7 @@ export default function Catalogue({
                   </tr>
                 </thead>
                 <tbody>
-                  {products.slice(page * 25, page * 25 + 25).map((p) => (
+                  {products.slice(currentPage * 25, currentPage * 25 + 25).map((p) => (
                     <tr key={p.id}>
                       <td>
                         <strong>{p.name}</strong>
@@ -155,7 +156,7 @@ export default function Catalogue({
                 </tbody>
               </table>
             </div>
-            <Pager page={page} total={products.length} onChange={setPage} />
+            <Pager page={currentPage} total={products.length} onChange={setPage} />
           </>
         ) : (
           <Empty

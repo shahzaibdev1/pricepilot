@@ -73,6 +73,7 @@ export const commandSchema = z.discriminatedUnion('type', [
     .object({ type: z.literal('batch.approve'), batchId: id, rowIds: z.array(id).max(5000) })
     .strict(),
   z.object({ type: z.literal('batch.apply'), batchId: id }).strict(),
+  z.object({ type: z.literal('batch.delete'), batchId: id }).strict(),
   z.object({ type: z.literal('sample.load') }).strict(),
 ]);
 export type Command = z.infer<typeof commandSchema>;

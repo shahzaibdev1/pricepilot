@@ -38,10 +38,13 @@ export async function parseFile(bytes: ArrayBuffer, name: string): Promise<Parse
     const book = new ExcelJS.Workbook();
     await book.xlsx.load(bytes);
     const sheets: ParsedFile['sheets'] = [];
+    const warnings: string[] = [];
     for (const sheet of book.worksheets) {
       if (sheet.state !== 'visible' || sheet.actualRowCount === 0) continue;
-      if (sheet.rowCount > MAX_ROWS + 1 || sheet.columnCount > 100)
-        throw new Error('Workbook exceeds 5,000 rows or 100 columns per sheet');
+      if (sheet.rowCount > MAX_ROWS + 1 || sheet.columnCount > 100) {
+        warnings.push(`${sheet.name}: exceeds 5,000 rows or 100 columns; skipped.`);
+        continue;
+      }
       const table: string[][] = [];
       sheet.eachRow((row) => {
         const values: string[] = [];
@@ -57,10 +60,17 @@ export async function parseFile(bytes: ArrayBuffer, name: string): Promise<Parse
         }
         table.push(values);
       });
-      sheets.push(makeSheet(sheet.name, table));
+      try {
+        sheets.push(makeSheet(sheet.name, table));
+      } catch (error) {
+        warnings.push(
+          `${sheet.name}: ${error instanceof Error ? error.message : 'Invalid sheet'}; skipped.`,
+        );
+      }
     }
-    if (!sheets.length) throw new Error('Workbook contains no visible product sheets');
-    return { sheets };
+    if (!sheets.length)
+      throw new Error('Workbook contains no readable product sheets. ' + warnings.join(' '));
+    return { sheets, warnings };
   } catch (error) {
     throw new Error(
       error instanceof Error ? 'Could not read XLSX: ' + error.message : 'Could not read XLSX',
@@ -76,6 +86,17 @@ export function guessMapping(headers: string[]): Mapping {
     cost: find(/^(cost|price|unit[ _-]?(cost|price)|wholesale[ _-]?price)$/i),
   };
 }
+export function mappedRows(rows: Record<string, string>[], mapping: Mapping) {
+  const columns = [...new Set([mapping.sku, mapping.name, mapping.cost].filter(Boolean))];
+  const selected = rows.map((row) =>
+    Object.fromEntries(columns.map((key) => [key, row[key] ?? ''])),
+  );
+  if (new TextEncoder().encode(JSON.stringify(selected)).byteLength > 5 * 1024 * 1024)
+    throw new Error(
+      'Mapped product data exceeds 5 MB after unpacking. Split this sheet into smaller files and try again.',
+    );
+  return selected;
+}
 export function exportCsv(rows: ReviewRow[], report = false): string {
   const selected = report
     ? rows
@@ -85,7 +106,7 @@ export function exportCsv(rows: ReviewRow[], report = false): string {
   const records = selected.map((r) =>
     report
       ? {
-          source_row: r.sourceRow,
+          record_number: r.sourceRow - 1,
           supplier_sku: r.sourceSku,
           sku: r.sku,
           name: r.name,
@@ -108,7 +129,7 @@ export function exportCsv(rows: ReviewRow[], report = false): string {
     escapeFormulae: true,
     columns: report
       ? [
-          'source_row',
+          'record_number',
           'supplier_sku',
           'sku',
           'name',

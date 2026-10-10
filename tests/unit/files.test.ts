@@ -1,6 +1,6 @@
 import { it, expect } from 'vitest';
 import ExcelJS from 'exceljs';
-import { parseFile, guessMapping, exportCsv } from '../../src/lib/domain/files';
+import { parseFile, guessMapping, exportCsv, mappedRows } from '../../src/lib/domain/files';
 import type { ReviewRow } from '../../src/lib/domain/types';
 const buffer = (s: string) => new TextEncoder().encode(s).buffer;
 it('reads quoted CSV, BOM and leading zero SKUs', async () => {
@@ -41,6 +41,38 @@ it('guesses supplier column names', () =>
     name: 'Description',
     cost: 'Unit Price',
   }));
+it('allows valid price sheets when another worksheet contains only instructions', async () => {
+  const book = new ExcelJS.Workbook();
+  book.addWorksheet('Instructions').addRow(['Please use the Prices tab']);
+  const prices = book.addWorksheet('Prices');
+  prices.addRow(['sku', 'name', 'cost']);
+  prices.addRow(['001', 'Part', 10]);
+  const bytes = await book.xlsx.writeBuffer();
+  const file = await parseFile(new Uint8Array(bytes).buffer, 'list.xlsx');
+  expect(file.sheets.map((sheet) => sheet.name)).toEqual(['Prices']);
+  expect(file.warnings?.[0]).toContain('Instructions');
+});
+it('sends only mapped values instead of expanding unused supplier columns', () => {
+  const row = Object.fromEntries(
+    Array.from({ length: 100 }, (_, i) => ['Column number ' + i, '12']),
+  );
+  const rows = Array.from({ length: 5000 }, () => row);
+  const mapping = { sku: 'Column number 0', name: 'Column number 1', cost: 'Column number 2' };
+  const normalized = mappedRows(rows, mapping);
+  expect(Object.keys(normalized[0])).toEqual(Object.values(mapping));
+  expect(normalized[0][mapping.cost]).toBe('12');
+  expect(Buffer.byteLength(JSON.stringify(normalized))).toBeLessThan(500000);
+});
+it('rejects expanded mapped data before sending a server action', () => {
+  const rows = Array.from({ length: 5000 }, () => ({
+    sku: 's'.repeat(500),
+    name: 'n'.repeat(500),
+    cost: '1'.repeat(500),
+  }));
+  expect(() => mappedRows(rows, { sku: 'sku', name: 'name', cost: 'cost' })).toThrow(
+    /split.*smaller/i,
+  );
+});
 it('exports only approved valid rows and escapes formulas', () => {
   const r: ReviewRow = {
     id: '1',

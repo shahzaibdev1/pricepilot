@@ -19,13 +19,13 @@ Open **http://127.0.0.1:3000**. `/demo` is a clearly labelled, browser-local sam
 - Account creation, sign-in, sign-out, email password reset and password change.
 - Private account workspaces protected by Supabase row-level security.
 - Supplier settings, target gross margin or cost markup, cost-increase alerts, saved column mappings and explicit SKU aliases.
-- CSV and XLSX upload, workbook sheet selection, quoted CSV, semicolon-delimited CSV and explicit decimal separators.
+- CSV and XLSX upload, workbook sheet selection, visible notices for skipped invalid sheets, quoted CSV, semicolon-delimited CSV and explicit decimal separators.
 - Existing catalogue import, product search, supplier filters, pagination, deletion and CSV export.
 - Exact product matching with preserved leading-zero codes. Unknown SKUs require explicit approval as new products or a configured alias.
 - Blocked duplicate SKUs, alias collisions, missing identifiers and invalid or formula-based costs.
 - Review tables showing old/new costs, suggested selling prices, margin warnings and missing products. Missing products are never deleted automatically.
 - Row selection, bulk approval of valid rows, atomic apply, stale-review protection and repeat-apply protection.
-- Saved history, product-update CSV and a complete change-report CSV, with spreadsheet formula escaping.
+- Saved history, product-update CSV and a complete change-report CSV, with spreadsheet formula escaping. Confirmed history removal frees saved-update slots without changing catalogue prices.
 - Responsive layout, keyboard-operable dialogs, labelled controls, visible validation messages and guided sample data.
 
 ## First real supplier
@@ -41,6 +41,8 @@ Open **http://127.0.0.1:3000**. `/demo` is a clearly labelled, browser-local sam
 9. Download the product CSV and change report.
 
 The product CSV has `sku,name,cost,selling_price` columns. It is a generic exchange format; this release does not write directly to Shopify, an ERP or an accounting system. Adapt the export to the buyer's importer during onboarding. Prices and reports use the workspace currency; there is no foreign-exchange conversion.
+
+Change reports use `record_number`: the one-based position among nonempty product records, rather than an original spreadsheet row or physical CSV line number. Download reports before removing saved updates in History; removal deletes the saved review/report and keeps catalogue products and prices.
 
 ## Hosted setup
 
@@ -70,6 +72,7 @@ See `docs/VALIDATION.md` for actual results and scope. Browser tests need the lo
 ## Boundaries of this release
 
 - 5 MB per uploaded file, 5,000 rows per sheet, 100 columns, 5,000 catalogue products, 100 suppliers, 500 SKU aliases per supplier and 50 saved updates.
+- Only mapped product columns are sent to the server. Expanded mapped data must also fit within 5 MB; split unusually large compressed worksheets into smaller files. Invalid workbook sheets are skipped with visible notices when other readable sheets exist.
 - One private workspace per account, one currency, two-decimal monetary units. USD, EUR, GBP, PKR, CAD and AUD are supported.
 - Files are parsed in the browser; original supplier files are not uploaded or stored. Reviewed rows and business data are saved to Supabase.
 - CSV files must be UTF-8. XLSX formulas are never evaluated; formula-based costs are blocked. Convert formula prices to values first.

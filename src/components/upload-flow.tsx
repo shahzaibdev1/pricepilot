@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import { UploadCloud, ArrowRight, FileSpreadsheet, Check, ArrowLeft } from 'lucide-react';
 import type { Workspace, ParsedFile, Mapping } from '@/lib/domain/types';
-import { parseFile, guessMapping } from '@/lib/domain/files';
+import { parseFile, guessMapping, mappedRows } from '@/lib/domain/files';
 import { sampleUpdate, sampleCatalogue } from '@/lib/domain/sample';
 import { downloadText, type RunCommand } from './shared';
 export default function UploadFlow({
@@ -73,6 +73,7 @@ export default function UploadFlow({
     if (!selected) return;
     setParsing(true);
     try {
+      if (selected.size > 5 * 1024 * 1024) throw new Error('Choose a file smaller than 5 MB');
       const parsed = await parseFile(await selected.arrayBuffer(), selected.name);
       setFile(parsed);
       setFileName(selected.name);
@@ -99,6 +100,15 @@ export default function UploadFlow({
       setError('Choose a different column for each catalogue field. A product name is required.');
       return;
     }
+    let reviewData: Record<string, string>[] = [];
+    if (!catalogue) {
+      try {
+        reviewData = mappedRows(sheet.rows, mapping);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Could not prepare product data');
+        return;
+      }
+    }
     const result = await run(
       catalogue
         ? {
@@ -112,7 +122,7 @@ export default function UploadFlow({
               sell: sellColumn ? row[sellColumn] : undefined,
             })),
           }
-        : { type: 'batch.create', supplierId, fileName, mapping, separator, rows: sheet.rows },
+        : { type: 'batch.create', supplierId, fileName, mapping, separator, rows: reviewData },
     );
     if (result) onDone(result);
   }
@@ -179,6 +189,11 @@ export default function UploadFlow({
           {error}
         </div>
       )}
+      {file?.warnings?.length ? (
+        <div className="notice warning" role="status">
+          Skipped workbook sheets: {file.warnings.join(' ')}
+        </div>
+      ) : null}
       <form onSubmit={submit}>
         <fieldset disabled={busy || parsing}>
           <div className="upload-layout">

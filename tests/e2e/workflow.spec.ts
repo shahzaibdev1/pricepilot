@@ -1,6 +1,8 @@
 import { test, expect } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import { readFile } from 'node:fs/promises';
+import { createRequire } from 'node:module';
+const ExcelJS = createRequire(import.meta.url)('exceljs') as typeof import('exceljs');
 test('complete supplier workflow, exports and reload persistence', async ({ page }) => {
   await page.goto('/demo');
   await expect(page.getByRole('heading', { name: 'Your pricing, under control.' })).toBeVisible();
@@ -27,6 +29,20 @@ test('complete supplier workflow, exports and reload persistence', async ({ page
   await expect(page.getByText('sample-update.csv')).toBeVisible();
   const accessibility = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa']).analyze();
   expect(accessibility.violations).toEqual([]);
+  await page.getByRole('button', { name: 'Open sample-update.csv' }).click();
+  const reportDownload = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Download change report' }).click();
+  const report = await readFile((await (await reportDownload).path())!, 'utf8');
+  expect(report).toContain('record_number');
+  expect(report).toContain('PP-300');
+  expect(report).toContain('blocked');
+  await page.getByRole('button', { name: 'Back to history' }).click();
+  page.once('dialog', (dialog) => dialog.accept());
+  await page.getByRole('button', { name: 'Remove sample-update.csv' }).click();
+  await expect(page.getByRole('heading', { name: 'No updates yet' })).toBeVisible();
+  await page.reload();
+  await page.getByRole('button', { name: 'Catalogue', exact: true }).click();
+  await expect(page.getByText('Cable organizer')).toBeVisible();
 });
 test('invalid upload produces a useful error', async ({ page }) => {
   await page.goto('/demo');
@@ -217,4 +233,124 @@ test('password recovery email returns to the app and changes the password', asyn
   await page.getByLabel('Password', { exact: true }).fill('RecoveryChanged123!');
   await page.getByRole('button', { name: 'Update password' }).click();
   await expect(page.getByRole('status')).toContainText('Password updated');
+});
+
+test('XLSX sheet selection preserves formatted SKUs and blocks formula prices', async ({
+  page,
+}) => {
+  const book = new ExcelJS.Workbook();
+  book.addWorksheet('Instructions').addRow(['Please use the Prices tab']);
+  const first = book.addWorksheet('Other products');
+  first.addRow(['sku', 'name', 'cost']);
+  first.addRow(['unused', 'Not selected', 1]);
+  const prices = book.addWorksheet('Prices');
+  prices.addRow(['sku', 'name', 'cost']);
+  prices.addRow([1, 'Formatted part', 12.5]);
+  prices.getCell('A2').numFmt = '000';
+  prices.addRow(['002', 'Formula price', { formula: '10+2', result: 12 }]);
+  await page.goto('/demo');
+  await page.getByRole('button', { name: 'New price update', exact: true }).first().click();
+  await page.getByLabel('Supplier file').setInputFiles({
+    name: 'prices.xlsx',
+    mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    buffer: Buffer.from(await book.xlsx.writeBuffer()),
+  });
+  await page.getByLabel('Workbook sheet').selectOption({ label: 'Prices' });
+  await expect(page.getByRole('status')).toContainText('Instructions');
+  await page.getByRole('button', { name: 'Review changes' }).click();
+  await expect(page.getByLabel('Approve 001', { exact: true })).toBeEnabled();
+  await expect(page.getByLabel('Approve 002', { exact: true })).toBeDisabled();
+  await page.getByRole('button', { name: 'Approve valid rows' }).click();
+  await page.getByRole('button', { name: 'Apply approved changes' }).click();
+  await page.getByRole('button', { name: 'Catalogue', exact: true }).click();
+  await expect(page.getByText('Formatted part', { exact: true })).toBeVisible();
+  await expect(page.getByText('Formula price', { exact: true })).not.toBeVisible();
+  await expect(page.getByText('Not selected', { exact: true })).not.toBeVisible();
+  await page.getByRole('button', { name: 'Overview', exact: true }).click();
+  await page.getByRole('button', { name: 'New price update', exact: true }).first().click();
+  await page.getByLabel('Supplier file').setInputFiles({
+    name: 'comma.csv',
+    mimeType: 'text/csv',
+    buffer: Buffer.from('sku;name;cost\n001;Formatted part;14,50'),
+  });
+  await page.getByLabel('Decimal separator').selectOption(',');
+  await page.getByRole('button', { name: 'Review changes' }).click();
+  await expect(page.getByText('Matched', { exact: true })).toBeVisible();
+  await page.getByLabel('Approve 001', { exact: true }).check();
+  await page.getByRole('button', { name: 'Apply approved changes' }).click();
+  const download = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Download product CSV' }).click();
+  const csv = await readFile((await (await download).path())!, 'utf8');
+  expect(csv).toContain('001,Formatted part,14.50,22.31');
+});
+
+test('supplier dialog supports keyboard dismissal and restores focus', async ({ page }) => {
+  await page.goto('/demo');
+  await page.getByRole('button', { name: 'Suppliers', exact: true }).click();
+  const opener = page.getByRole('button', { name: 'Add supplier' });
+  await opener.focus();
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('dialog')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog')).not.toBeVisible();
+  await expect(opener).toBeFocused();
+});
+
+test('wide 5,000-row supplier files save in a real account without unused columns', async ({
+  page,
+}) => {
+  await page.goto('/login');
+  await page.getByRole('button', { name: 'Create an account' }).click();
+  await page.getByLabel('Email address').fill(`wide-${crypto.randomUUID()}@example.com`);
+  await page.getByLabel('Password', { exact: true }).fill('WideFileTest123!');
+  await page.getByRole('button', { name: 'Create account', exact: true }).click();
+  await expect(page).toHaveURL(/\/app$/);
+  await page.getByRole('button', { name: 'Load sample workspace' }).click();
+  await page.getByRole('button', { name: 'New price update', exact: true }).first().click();
+  const headers = [
+    'sku',
+    'name',
+    'cost',
+    ...Array.from({ length: 97 }, (_, i) => `Unused supplier attribute ${i}`),
+  ];
+  const csv = [
+    headers.join(','),
+    ...Array.from({ length: 5000 }, (_, i) =>
+      [`WIDE-${i}`, `Bulk item ${i}`, '10', ...Array.from({ length: 97 }, () => '12')].join(','),
+    ),
+  ].join('\n');
+  expect(Buffer.byteLength(csv)).toBeLessThan(5 * 1024 * 1024);
+  await page
+    .getByLabel('Supplier file')
+    .setInputFiles({ name: 'wide.csv', mimeType: 'text/csv', buffer: Buffer.from(csv) });
+  await page.getByRole('button', { name: 'Review changes' }).click();
+  await expect(page.getByRole('heading', { name: 'Review before you update' })).toBeVisible();
+  await expect(page.getByText('Page 1 of 200', { exact: true })).toBeVisible();
+  await page.getByLabel('Approve WIDE-0', { exact: true }).check();
+  await page.getByRole('button', { name: 'Apply approved changes' }).click();
+  await expect(page.getByText('Changes applied. Your catalogue is up to date.')).toBeVisible();
+  await page.reload();
+  await page.getByRole('button', { name: 'Catalogue', exact: true }).click();
+  await expect(page.getByText('Bulk item 0', { exact: true })).toBeVisible();
+  await expect(page.getByText('Bulk item 1', { exact: true })).not.toBeVisible();
+});
+
+test('deleting the last product on a catalogue page returns to a valid page', async ({ page }) => {
+  await page.goto('/demo');
+  await page.getByRole('button', { name: 'Catalogue', exact: true }).click();
+  await page.getByRole('button', { name: 'Import catalogue', exact: true }).click();
+  const csv = [
+    'sku,name,cost',
+    ...Array.from({ length: 22 }, (_, i) => `PAGE-${i},Page item ${i},10`),
+  ].join('\n');
+  await page
+    .getByLabel('Supplier file')
+    .setInputFiles({ name: 'pages.csv', mimeType: 'text/csv', buffer: Buffer.from(csv) });
+  await page.getByRole('button', { name: 'Import catalogue', exact: true }).click();
+  await page.getByRole('button', { name: 'Next page' }).click();
+  await expect(page.getByText('Page 2 of 2', { exact: true })).toBeVisible();
+  page.once('dialog', (dialog) => dialog.accept());
+  await page.getByRole('button', { name: 'Delete PAGE-21', exact: true }).click();
+  await expect(page.getByText('Page 1 of 1', { exact: true })).toBeVisible();
+  await expect(page.getByText('USB-C hub', { exact: true })).toBeVisible();
 });

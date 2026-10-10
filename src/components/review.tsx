@@ -146,7 +146,7 @@ export default function Review({
                   <td>
                     <input
                       type="checkbox"
-                      aria-label={`Approve ${r.sku || 'row ' + r.sourceRow}`}
+                      aria-label={`Approve ${r.sku || 'record ' + (r.sourceRow - 1)}`}
                       checked={applied ? r.approved : selected.includes(r.id)}
                       disabled={busy || applied || r.status === 'blocked'}
                       onChange={(e) =>

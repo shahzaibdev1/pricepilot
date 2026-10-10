@@ -25,8 +25,8 @@
 
 ## Tasks
 
-- [ ] 1. Write failing unit contracts; implement monetary parsing, CSV/XLSX parsing and exports, mapping validation, matching/review/apply with unit tests.
-- [ ] 2. Write failing persistence/auth tests; implement Supabase migration, RLS, atomic versioned RPC, server auth/actions and local demo adapter; run real integration tests.
-- [ ] 3. Write failing browser scenarios; implement shell, dashboard, supplier settings/aliases, catalogue import, guided supplier upload/review/export, history and login/reset screens.
-- [ ] 4. Run tests and fix root causes; check keyboard accessibility/mobile, lint/types/build/audit; independent whole-app review and regression fixes.
-- [ ] 5. Provide README, setup, sample files, actual validation report; launch local application and hand off with explicit hosted setup limits.
+- [x] 1. Write failing unit contracts; implement monetary parsing, CSV/XLSX parsing and exports, mapping validation, matching/review/apply with unit tests.
+- [x] 2. Write failing persistence/auth tests; implement Supabase migration, RLS, atomic versioned RPC, server auth/actions and local demo adapter; run real integration tests.
+- [x] 3. Write failing browser scenarios; implement shell, dashboard, supplier settings/aliases, catalogue import, guided supplier upload/review/export, history and login/reset screens.
+- [x] 4. Run tests and fix root causes; check keyboard accessibility/mobile, lint/types/build/audit; independent whole-app review and regression fixes.
+- [x] 5. Provide README, setup, sample files, actual validation report; launch local application and hand off with explicit hosted setup limits.
